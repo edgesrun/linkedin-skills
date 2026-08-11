@@ -1,0 +1,22 @@
+{
+  "name": "linkedin-skills",
+  "version": "1.0.0",
+  "description": "76 curated skills for the Edges LinkedIn & Sales Navigator API. Extract profiles, search people and companies, automate outreach. Cookieless — no LinkedIn account needed.",
+  "author": {
+    "name": "Edges",
+    "url": "https://github.com/edgesrun"
+  },
+  "homepage": "https://docs.edges.run",
+  "repository": "https://github.com/edgesrun/linkedin-skills",
+  "license": "Apache-2.0",
+  "keywords": ["linkedin", "sales-navigator", "edges", "api", "outreach", "lead-generation"],
+  "userConfig": {
+    "EDGES_API_KEY": {
+      "type": "string",
+      "title": "Edges API Key",
+      "description": "Your Edges API key from https://app.edges.run -> Developer Settings",
+      "sensitive": true,
+      "required": true
+    }
+  }
+}

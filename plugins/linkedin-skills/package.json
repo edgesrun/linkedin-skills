@@ -1,0 +1,43 @@
+{
+  "name": "@edgesrun/skills",
+  "description": "LinkedIn & Sales Navigator API skills for AI coding agents (Claude Code, Cursor, Copilot, Gemini, 30+ tools)",
+  "version": "1.0.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "author": {
+    "name": "Edges",
+    "url": "https://github.com/edgesrun"
+  },
+  "homepage": "https://docs.edges.run",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/edgesrun/linkedin-skills.git"
+  },
+  "bugs": {
+    "url": "https://github.com/edgesrun/linkedin-skills/issues"
+  },
+  "keywords": [
+    "linkedin",
+    "sales-navigator",
+    "edges",
+    "api",
+    "outreach",
+    "lead-generation",
+    "agent-skills",
+    "claude-code",
+    "cursor",
+    "mcp"
+  ],
+  "scripts": {
+    "example:identity": "tsx examples/identity_resolution.ts",
+    "example:account": "tsx examples/account_research.ts",
+    "example:connection-of": "tsx examples/connection_of_search.ts"
+  },
+  "dependencies": {
+    "@edgesrun/sdk": "26.313.1422"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.2"
+  }
+}

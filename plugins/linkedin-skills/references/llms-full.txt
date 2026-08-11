@@ -1,0 +1,499 @@
+# Edges API
+
+> Edges is the LinkedIn & Sales Navigator API for developers, product teams, and AI agents. It provides 70+ actions to extract data, search people and companies, automate outreach, and manage LinkedIn identities — all through one unified REST API.
+>
+> Two modes of operation:
+> - **Cookieless extraction** (managed mode): No LinkedIn account needed. Just send your API key and get data back. Works for all extraction and search actions.
+> - **Identity-connected** (direct/auto mode): Connect LinkedIn accounts to perform user-specific actions like messaging, connecting, extracting connections/followers/messages, and outreach automation.
+>
+> Edges is built for three audiences:
+> 1. **Product teams** embedding LinkedIn data or automation into their SaaS
+> 2. **AI agent builders** who need programmatic LinkedIn access
+> 3. **Technical GTM teams** running data-driven outreach at scale
+>
+> SDK: `npm install @edgesrun/sdk` | Docs: https://docs.edges.run
+
+---
+
+## How Authentication Works
+
+Authenticate with an API key via `@edgesrun/sdk` (`new Edges({ apiKey })`). Get your key from https://app.edges.run → Developer Settings.
+
+```typescript
+import { Edges } from '@edgesrun/sdk';
+
+const ed = new Edges({ apiKey: process.env.EDGES_API_KEY! });
+const { data } = await ed.linkedin.searchPeople({
+  identity_mode: 'managed',
+  input: {
+    linkedin_people_search_url:
+      'https://www.linkedin.com/search/results/people/?keywords=CEO%20fintech',
+  },
+});
+```
+
+Install: `npm install @edgesrun/sdk`
+
+---
+
+## How Identity Modes Work
+
+Identity modes control which LinkedIn account performs the action.
+
+### Managed Mode (cookieless — no account needed)
+
+Use `"identity_mode": "managed"` for all data extraction and search actions. Edges uses its own pool of accounts. No setup required. Costs 1.5x credits. Available for: all extract actions, all search actions, Sales Navigator search and extraction, Find Profile/Company URL.
+
+### Direct Mode (your accounts)
+
+Use `"identity_ids": ["your-identity-uuid"]` when the action requires a specific LinkedIn account. Required for: Extract Connections, Extract Followers, Extract Profile Viewers, Extract Conversations, Extract Messages, Send Message, Send InMail, Connect, Like, Comment, Accept/Withdraw Invitations, Visit Profile.
+
+### Auto Mode (load-balanced)
+
+Use `"identity_mode": "auto"` to distribute requests across all connected accounts automatically using Smart Limits. Best for GTM teams with multiple reps.
+
+### Engagement Identities
+
+A special identity type at $7.99/mo per identity. 23 outreach and monitoring actions run credit-free. Ideal for SaaS products connecting end-user LinkedIn accounts, or GTM teams monitoring sales rep activity. Must be set as `type: "engagement"` at creation — cannot be changed afterwards.
+
+Credit-free actions include: Connect Profile, Message Profile, InMail, Visit Profile, Like Post, Comment Post, Follow Profile, Accept/Withdraw Invitations, Extract Connections, Extract Conversations, Extract Messages, Extract Followers, Extract Profile Viewers, Extract Sent/Received Invitations, Invite to Event.
+
+**SaaS architecture:** Create one engagement identity per end-user. Billing is per active identity per month (active = at least one action in 30 days). This is the correct model for outreach products embedding Edges — not managed mode, not per-credit billing per send.
+
+### Identity Mode Decision Guide
+
+| Scenario | Mode | Why |
+|---|---|---|
+| Getting started, no accounts | `managed` | Zero setup, immediate use |
+| High volume, cost-sensitive | `direct` or `auto` | 1 credit vs 1.5x for managed |
+| Burst traffic beyond own quota | `managed` as overflow | Supplement own accounts |
+| SaaS with end-users connecting LinkedIn | `direct` with engagement identity per user | Each user's actions run under their own account, credit-free |
+| Need Sales Navigator actions | `direct` or `auto` with SN-enabled identities | SN actions require identities with active Sales Navigator subscription. Standard LinkedIn Premium will fail with `SN_ACCOUNT_UPGRADE` error |
+| GTM team with multiple reps | `auto` | Load-balances across all connected accounts automatically |
+
+---
+
+## How Execution Modes Work
+
+### Live Mode (synchronous)
+
+Returns results immediately. Endpoint: `POST /v1/actions/{action-slug}/run/live`. Body uses **`input` (singular — one object, NOT an array)**:
+
+```json
+{"identity_mode": "managed", "input": {"linkedin_profile_url": "https://www.linkedin.com/in/satya-nadella"}, "parameters": {"experiences": true, "skills": true}}
+```
+
+### Async Mode (batch processing)
+
+Runs in background. Endpoint: `POST /v1/actions/{action-slug}/run/async`. Body uses **`inputs` (plural — array of objects)**:
+
+```json
+{"identity_mode": "managed", "inputs": [{"linkedin_profile_url": "..."}, {"linkedin_profile_url": "..."}], "callback": {"url": "https://your-app.com/webhook", "on": "final"}}
+```
+
+**Anti-pattern:** Do NOT send one input per async request when you have 200 inputs. Send all 200 in one request — Edges batches internally.
+
+**Polling (alternative to callbacks):** Submit → get `run_uid` → `GET /runs/{run_uid}/status` → when `SUCCEEDED` → `GET /runs/{run_uid}/outputs`.
+
+### Schedule Mode (recurring via CRON)
+
+Executes actions on a schedule. Results delivered via callbacks. Use for monitoring. Endpoint: `POST /v1/actions/{action-slug}/run/schedule`. Provide `cron` (e.g., `"0 9 * * 1-5"`) and `timezone` (e.g., `"Europe/Paris"`). Body uses `inputs` (plural, same as async).
+
+### Execution Mode Decision Guide
+
+| Scenario | Mode | Why |
+|---|---|---|
+| Single record, user-triggered | Live | Immediate response, 2-6s latency |
+| Batch of 2+ inputs | Async | One request, auto-pagination, auto-retry on limits |
+| Recurring pipeline (monitoring) | Schedule | CRON + `sync_mode: "incremental"` for only-new-data |
+| Large result set (1,000+) | Async | No cursor expiry, automatic pagination |
+| n8n / Make / Zapier | Async | `callback.on: "final"` + poll outputs |
+
+### Callbacks
+
+- **Streaming** (`"on": "all"`): Multiple callbacks, one per batch of results as they arrive.
+- **Final** (`"on": "final"`): Single callback on completion. Fetch results via `GET /runs/{run_uid}/outputs`.
+
+### Incremental Sync
+
+For engagement identities. Fetches only new data since last run. Supported for: `linkedin-extract-connections`, `linkedin-extract-messages`, `linkedin-extract-profile-viewers`. Set `"sync_mode": "incremental"` in parameters.
+
+---
+
+## How Pagination Works
+
+**Live mode (manual):** Follow the `X-Pagination-Next` response header. POST to the URL it provides with the same request body. Repeat until no header is present. Never construct cursor values manually. Cursors expire after 24 hours. Always deduplicate results by `sales_navigator_profile_id` or `linkedin_profile_id` — search results naturally overlap across page boundaries.
+
+**Async/Schedule mode (automatic):** Set `max_results` to control total. Edges paginates internally. Results arrive via callbacks or polling.
+
+---
+
+## How Smart Limits Work
+
+Edges enforces daily action caps per identity per action on a 24-hour rolling window. These are Edges' business logic, not LinkedIn rate limits. **Live mode:** returns error on limit. **Async/Schedule:** auto-queues and retries. Query limits via `GET /v1/identities/{identity_uid}/actions/{action_slug}/limits`.
+
+**Key limits per identity per 24h:** Profile visits: 80 (500 w/ SN). Connection requests: 25 (30 w/ SN). Messages: 50 (250 w/ SN). Profile enrichments: 10,000. Search people: 2,000. Company enrichments: 10,000. Contact info: 250.
+
+**Live mode outreach delays:** Visit ~30s, Connect ~60s, Message ~60s, InMail ~30s. Always add random jitter (0-15s).
+
+---
+
+## Action Reference
+
+Every action below supports live, async, and schedule execution modes. The table shows the action slug (used in the endpoint URL), the required input field name, and whether it works cookieless (managed mode) or requires a connected identity.
+
+### Extract — People & Profiles
+
+| Action Slug | Input Field | Cookieless | Description |
+|---|---|---|---|
+| `linkedin-extract-people` | `linkedin_profile_url` | Yes | Full profile. **Key parameters:** `experiences` (last 5 jobs), `skills`, `sections` (summary, education, languages), `highlights` (connections, followers, thread_id). All default false — set all to true for full enrichment. |
+| `linkedin-extract-people-experiences` | `linkedin_profile_url` | Yes | Complete work history (all positions, paginated in chunks of 20). Use this when you need full job history — `extract-people` only returns the last 5. This is a LinkedIn constraint, not an API limitation. |
+| `linkedin-extract-people-educations` | `linkedin_profile_url` | Yes | Education: schools, degrees, fields of study, dates |
+| `linkedin-extract-people-skills` | `linkedin_profile_url` | Yes | Skills with endorsement counts |
+| `linkedin-extract-licenses-certifications` | `linkedin_profile_url` | Yes | Credentials, issuing organizations, dates |
+| `linkedin-extract-people-post-activity` | `linkedin_profile_url` | Yes | Posts published by the person. Paginated via cursor. |
+| `linkedin-extract-people-comment-activity` | `linkedin_profile_url` | Yes | Posts the person commented on |
+| `linkedin-extract-people-reaction-activity` | `linkedin_profile_url` | Yes | Posts the person reacted to |
+| `linkedin-extract-contact` | `linkedin_profile_url` | Yes | Email, phone, address (if visible) |
+| `linkedin-me` | _(none)_ | No | Your own profile info |
+| `linkedin-extract-connections` | _(none)_ | No | Your connections list |
+| `linkedin-extract-followers` | _(none)_ | No | People who follow your profile |
+| `linkedin-extract-profile-viewers` | _(none)_ | No | People who viewed your profile |
+| `linkedin-extract-conversations` | _(none)_ | No | Your messaging conversations |
+| `linkedin-extract-messages` | `linkedin_conversation_url` | No | Messages from a specific conversation |
+| `linkedin-extract-sent-invitations` | _(none)_ | No | Your pending outbound invitations |
+| `linkedin-extract-received-invitations` | _(none)_ | No | Your pending inbound invitations |
+
+### Extract — Companies
+
+| Action Slug | Input Field | Cookieless | Description |
+|---|---|---|---|
+| `linkedin-extract-company` | `linkedin_company_url` | Yes | Company profile: name, industry, size, website, description |
+| `linkedin-extract-company-employees-insights` | `linkedin_company_url` | Yes | Headcount by function, location, seniority |
+| `linkedin-extract-company-affiliates` | `linkedin_company_url` | Yes | Subsidiaries and parent companies |
+| `linkedin-extract-similar-companies` | `linkedin_company_url` | Yes | Competitor and similar company recommendations |
+| `linkedin-extract-page-followers` | `linkedin_company_url` | No | Followers of a company page (requires admin) |
+
+### Extract — Posts, Events, Groups, Jobs
+
+| Action Slug | Input Field | Cookieless | Description |
+|---|---|---|---|
+| `linkedin-extract-post` | `linkedin_post_url` | Yes | Post content, author, engagement metrics |
+| `linkedin-extract-post-commenters` | `linkedin_post_url` | Yes | People who commented on a post. Live mode returns 20 per page (paginate manually). Async mode returns all commenters automatically. Note: nested replies (replies to comments) are not accessible — LinkedIn does not expose them. |
+| `linkedin-extract-post-likers` | `linkedin_post_url` | Yes | People who liked a post. Live mode returns 20 per page. Async mode returns all likers automatically. |
+| `linkedin-extract-post-reposters` | `linkedin_post_url` | Yes | People who reposted |
+| `linkedin-extract-event` | `linkedin_event_url` | Yes | Event details |
+| `linkedin-extract-event-attendees` | `linkedin_event_url` | Yes | Registered attendees |
+| `linkedin-extract-job` | `linkedin_job_url` | Yes | Job posting details |
+| `linkedin-extract-school-alumnis` | `linkedin_school_url` | Yes | Alumni list |
+| `linkedin-extract-group-members` | `linkedin_group_url` | Yes | Group members |
+
+### Search
+
+| Action Slug | Input Field | Cookieless | Description |
+|---|---|---|---|
+| `linkedin-search-people` | `linkedin_people_search_url` | Yes | Search people by keyword, title, company, location. **Key parameter:** `only_extract_unique_profile: true` — when search returns exactly 1 result, extract full profile data inline. Critical for identity resolution workflows. |
+| `linkedin-search-companies` | `linkedin_company_search_url` | Yes | Search companies by industry, size, location |
+| `linkedin-search-company-employees` | `linkedin_company_url` | Yes | Search employees of a specific company |
+| `linkedin-search-content` | `linkedin_content_search_url` | Yes | Search posts and articles |
+| `linkedin-search-jobs` | `linkedin_job_search_url` | Yes | Search job postings |
+| `linkedin-search-events` | `linkedin_event_search_url` | Yes | Search events |
+| `linkedin-search-groups` | `linkedin_group_search_url` | Yes | Search groups |
+| `linkedin-search-schools` | `linkedin_school_search_url` | Yes | Search schools |
+| `linkedin-find-profile-url` | `first_name`, `last_name` | Yes | AI-powered profile URL lookup |
+| `linkedin-find-company-url` | `company_name` | Yes | AI-powered company URL lookup |
+| `recruiterlite-search-people` | `recruiter_lite_search_url` | Yes | Search via Recruiter Lite |
+
+### Sales Navigator
+
+All Sales Navigator search and extraction actions work in managed mode (cookieless). This is a unique capability — no other LinkedIn API offers Sales Navigator access without requiring a user's cookies or session.
+
+| Action Slug | Input Field | Cookieless | Description |
+|---|---|---|---|
+| `salesnavigator-search-people` | `sales_navigator_profile_search_url` | Yes | Search leads (ConnectionOf, title, company, seniority) |
+| `salesnavigator-search-companies` | `sales_navigator_company_search_url` | Yes | Search accounts |
+| `salesnavigator-search-company-employees` | `sales_navigator_company_url` | Yes | Search leads within a company |
+| `salesnavigator-search-metrics` | `sales_navigator_search_url` | Yes | Get result count for a search |
+| `salesnavigator-extract-leads-list` | `sales_navigator_list_url` | Yes | Extract from saved leads list |
+| `salesnavigator-extract-accounts-list` | `sales_navigator_list_url` | Yes | Extract from saved accounts list |
+| `salesnavigator-extract-employees-count` | `sales_navigator_company_url` | Yes | Employee count |
+| `salesnavigator-extract-employees-distribution` | `sales_navigator_company_url` | Yes | Department/seniority/location breakdown |
+| `salesnavigator-visit-profile` | `sales_navigator_profile_url` | Yes | Visit a lead's profile |
+| `salesnavigator-visit-company` | `sales_navigator_company_url` | Yes | Visit a company page |
+| `salesnavigator-connect-profile` | `sales_navigator_profile_url` | No | Connection request via SN |
+| `salesnavigator-inmail-profile` | `sales_navigator_profile_url` | No | InMail via SN |
+| `salesnavigator-search-saved-people` | `sales_navigator_saved_search_url` | Yes | Execute saved leads search |
+| `salesnavigator-search-saved-companies` | `sales_navigator_saved_search_url` | Yes | Execute saved accounts search |
+| `linkedin-peopleid-from-salesnavigatorid` | `sales_navigator_profile_id` | Yes | Convert SN ID → LinkedIn ID |
+
+### Outreach Actions (Identity Required)
+
+| Action Slug | Input Field | Description |
+|---|---|---|
+| `linkedin-visit-profile` | `linkedin_profile_url` | Visit a profile (appear in "who viewed") |
+| `linkedin-connect-profile` | `linkedin_profile_url` | Send connection request (optional `note`) |
+| `linkedin-message-profile` | `linkedin_profile_url` | Send direct message (`message_text`) |
+| `linkedin-inmail-profile` | `linkedin_profile_url` | Send InMail (`subject`, `message`) |
+| `linkedin-like-post` | `linkedin_post_url` | Like a post |
+| `linkedin-comment-post` | `linkedin_post_url` | Comment on a post (`comment_text`) |
+| `linkedin-follow-profile` | `linkedin_profile_url` | Follow a profile |
+| `linkedin-accept-invitation` | _(invitation id)_ | Accept a connection invitation |
+| `linkedin-withdraw-invitation` | _(invitation id)_ | Withdraw a pending invitation |
+
+
+---
+
+## URL Construction Patterns
+
+Most Edges actions take a LinkedIn or Sales Navigator URL as input. The ability to programmatically construct these URLs is what enables advanced use cases like ConnectionOf searches, new hire monitoring, and boolean prospecting.
+
+### Key ID Types
+
+| ID Type | What It Is | Used For |
+|---|---|---|
+| `sales_navigator_profile_id` | Alphanumeric hash (e.g., `ACoAAAHbyNkB7r9-...`) | Person-centric filters: CONNECTION_OF, VIEWED_BY |
+| `company_profile_id` | Numeric LinkedIn company ID (e.g., `783611`) | Company-centric filters: CURRENT_COMPANY, PAST_COMPANY |
+| `linkedin_profile_handle` | Slug after `/in/` (e.g., `marcfrancis`) | Direct profile URLs |
+
+**Critical:** `sales_navigator_profile_id` is for people. `company_profile_id` is for companies. Never mix them. Company filters use the URN format: `urn%253Ali%253Aorganization%253A{company_profile_id}`.
+
+### Find a Person by Name + Company
+
+Standard LinkedIn (pass to `linkedin-search-people`):
+`https://www.linkedin.com/search/results/people/?keywords=%22{Full_Name}%22%20AND%20%22{Company_Name}%22&origin=SWITCH_SEARCH_VERTICAL`
+
+Sales Navigator (pass to `salesnavigator-search-people`, higher precision):
+`https://www.linkedin.com/sales/search/people?query=(recentSearchParam%3A(doLogHistory%3Atrue)%2CspellCorrectionEnabled%3Atrue%2Ckeywords%3A%2522{Full_Name}%2522%2520AND%2520%2522{Company_Name}%2522)&viewAllFilters=true`
+
+**Encoding:** SN uses double-URL-encoding (`%2522` = `"`, `%2520` = space). Standard LinkedIn uses single encoding (`%22`).
+
+### ConnectionOf — Extract a Person's Network
+
+**Requires:** `sales_navigator_profile_id` — get it by running `linkedin-extract-people` on the person first.
+
+Standard LinkedIn: `https://www.linkedin.com/search/results/people/?connectionOf=%22{sales_navigator_profile_id}%22&origin=FACETED_SEARCH`
+
+Sales Navigator: `https://www.linkedin.com/sales/search/people?query=(recentSearchParam%3A(doLogHistory%3Atrue)%2Cfilters%3AList((type%3ACONNECTION_OF%2Cvalues%3AList((id%3A{sales_navigator_profile_id}%2CselectionType%3AINCLUDED)))))`
+
+### New Hires at a Company
+
+**Requires:** `company_profile_id` (numeric) — get it from `linkedin-extract-company` response.
+
+Single company: `https://www.linkedin.com/sales/search/people?query=(recentSearchParam%3A%2Cfilters%3AList((type%3ACURRENT_COMPANY%2Cvalues%3AList((id%3Aurn%253Ali%253Aorganization%253A{company_id}%2CselectionType%3AINCLUDED%2Cparent%3A)))%2C(type%3ARECENTLY_CHANGED_JOBS%2Cvalues%3AList((id%3ARPC%2CselectionType%3AINCLUDED)))))`
+
+**Batch monitoring:** Inject additional company URNs into the same `values%3AList`: `(id%3Aurn%253Ali%253Aorganization%253A{id_1}%2C...)%2C(id%3Aurn%253Ali%253Aorganization%253A{id_2}%2C...)`. Keep under 100 companies per URL.
+
+### Title + Keyword Boolean Search
+
+Formula: `https://www.linkedin.com/sales/search/people?query=(spellCorrectionEnabled%3Atrue%2Cfilters%3AList((type%3ACURRENT_TITLE%2Cvalues%3AList((text%3A%22{Title_1}%22%20OR%20%22{Title_2}%22%2CselectionType%3AINCLUDED))))%2Ckeywords%3A%22{Keyword_1}%22%20OR%20%22{Keyword_2}%22)&viewAllFilters=true`
+
+Example: `...text%3A%22Software Engineer%22%20OR%20%22Product Engineer%22...keywords%3A%22python%22%20OR%20%22Node JS%22...`
+
+### Jobs by Region (Hiring Intent)
+
+`https://www.linkedin.com/jobs/search/?f_C={company_id}&geoId={region_id}` — US: `103644278`, EMEA: `91000007`. Pass to `linkedin-search-jobs`.
+
+### Company Content Feed
+
+Posts by the company: `https://www.linkedin.com/search/results/content/?fromOrganization={company_id}`
+Posts mentioning the company: `https://www.linkedin.com/search/results/content/?mentionsOrganization={company_id}`
+Pass to `linkedin-search-content`.
+
+---
+
+## LinkedIn Platform Constraints
+
+These are inherent LinkedIn behaviors — not Edges limitations. Every implementation must be designed around them.
+
+### Experiences Are Split Into Two Calls
+
+LinkedIn limits profile extraction to the last 5 experiences. For complete job history, two calls are always required:
+1. `linkedin-extract-people` with `parameters: { experiences: true }` → returns profile + last 5 positions
+2. `linkedin-extract-people-experiences` → returns all positions, paginated in chunks of 20
+
+### Post Engagement Has a 20-Per-Page Cap in Live Mode
+
+When extracting likers or commenters, live mode returns 20 per page. You must paginate manually. For the complete list without pagination, use async mode — Edges handles all pages internally. Nested comment replies (replies to comments) are not accessible — LinkedIn does not expose them.
+
+### Daily Quotas Per Identity
+
+When a managed identity hits its daily cap, the response is `LIMIT_REACHED` with a `postponed_until` timestamp in the error params. The only correct response is to queue the job and retry after `postponed_until` — never retry immediately. In async/schedule mode, Edges handles this automatically. In live mode, you must build a retry queue yourself.
+
+### Sales Navigator Requires SN-Enabled Identity
+
+SN actions (`salesnavigator-search-people`, `salesnavigator-extract-company`, etc.) require an identity with an active Sales Navigator subscription. A standard LinkedIn Premium identity will fail with `SN_ACCOUNT_UPGRADE` error. Managed mode handles this transparently — but if using direct/auto, verify the identity has SN access.
+
+### Pagination Cursors Expire After 24 Hours
+
+The `X-Pagination-Next` cursor has a 24-hour TTL. If your process takes longer to paginate, the cursor becomes invalid and you must restart from page 1. For large result sets (1,000+), use async mode — no cursor expiry concern.
+
+### LinkedIn-Inherent Error Labels
+
+These errors come from LinkedIn itself, not from Edges. Handle them in your logic:
+
+| Error Label | Meaning | Correct Response |
+|---|---|---|
+| `ALREADY_CONNECTED` | You're already connected with this person | Skip connect step, advance to message |
+| `INVITATION_PENDING` | Connection request already sent | Continue waiting, do not re-send |
+| `NOT_CONNECTED` | Can't message someone you're not connected to | Send connection request first |
+| `PROFILE_NOT_ACCESSIBLE` | Profile deleted, blocked, or handle changed | Remove from pipeline, or re-search by name |
+| `LIMIT_REACHED` | Daily quota exhausted | Read `postponed_until`, retry after that timestamp |
+| `SN_ACCOUNT_UPGRADE` | Identity doesn't have Sales Navigator | Use a different identity with SN, or use managed mode |
+| `LK_INMAIL_NOT_ENOUGH_CREDIT` | No InMail credits remaining | Switch to connection request + message workflow |
+
+---
+
+## What You Can Build With Edges
+
+### Identity Resolution
+
+Resolve names from any source (Slack communities, CRM records, event attendees) to verified LinkedIn profiles and emails.
+
+**Pattern:**
+1. Build a search URL: `"Full Name" AND "Company"` or `"Full Name" AND "keyword"` (add a keyword like "developer", "sales", or "recruiter" to narrow results from hundreds to single digits)
+2. Call `linkedin-search-people` with `parameters: { only_extract_unique_profile: true }` in managed mode
+3. If one result → match found, extract `linkedin_profile_id` and `sales_navigator_profile_id`
+4. If multiple results → score candidates against known signals (title, industry, company) to pick the best match
+5. Enrich the match with `linkedin-extract-people` (all parameters enabled)
+6. Optionally get visible contact info via `linkedin-extract-contact`
+
+**Keyword narrowing trick:** Searching "John Smith" returns 500+ results. Searching `"John Smith" AND "developer"` returns 3. Use context about the person (role, industry, skills) to add a narrowing keyword.
+
+**Key actions:** `linkedin-search-people`, `linkedin-find-profile-url` (AI lookup), `linkedin-extract-people`, `linkedin-extract-contact`.
+
+### Account Intelligence
+
+Build comprehensive company profiles from a domain name. Resolve domain via `linkedin-find-company-url`. Extract profile with `linkedin-extract-company` (returns `company_id`). Then in parallel: employee insights (`linkedin-extract-company-employees-insights`), department distribution (`salesnavigator-extract-employees-distribution`), company posts (`linkedin-search-content` with `fromOrganization={company_id}` URL), job openings by region (`linkedin-search-jobs` with `geoId` URLs), affiliates, and similar companies.
+
+### Lead Enrichment Pipeline
+
+Call `linkedin-extract-people` with all parameters enabled (`experiences: true`, `skills: true`, `sections: true`, `highlights: true`). For complete job history, add `linkedin-extract-people-experiences` (extract-people only returns last 5). Use async mode for batches — send all inputs in one request.
+
+### Outbound Sequences
+
+Use engagement identities for credit-free outreach. Sequence with human-like delays: visit (day 0, 80-500/day) → connect with note (day 1, 25-30/day; Classic accounts limited to 5 personalized notes/month) → message after acceptance (day 3, 50-250/day) → follow-ups (day 7, 14) → archive.
+
+**Reply detection:** Call `linkedin-extract-conversations`, check `last_message` sender — if not your identity, they replied. More efficient than extracting all messages per thread.
+
+**Sync-before-send:** Always `extract-conversations` immediately before sending to prevent race conditions (lead replies between your last check and the send).
+
+**De-duplication:** Before each step, check: already replied? pending invitation? existing conversation? If lead messaged first, pause for human review.
+
+**LinkedIn errors to handle:** `ALREADY_CONNECTED` → skip to message. `INVITATION_PENDING` → wait. `NOT_CONNECTED` → send connect first. `LIMIT_REACHED` → read `postponed_until`, retry after.
+
+**Key actions:** `linkedin-visit-profile`, `linkedin-connect-profile`, `linkedin-message-profile`, `linkedin-inmail-profile`, `linkedin-extract-conversations`.
+
+### Network Analysis & Audience Audit
+
+**ConnectionOf prospecting:** Build a ConnectionOf URL (see URL Construction), pass to `salesnavigator-search-people`. Paginate with `X-Pagination-Next`. Deduplicate by `sales_navigator_profile_id`.
+
+**Audience audit:** Orchestrate multiple extractors to score connection quality: `linkedin-extract-connections` (full list) + `linkedin-extract-conversations` (detect real relationships via message history) + `linkedin-extract-post-likers`/`commenters`/`reposters` (who engages with your content) + `linkedin-extract-people-reaction-activity`/`comment-activity` (your engagement with others). This pattern enables audience quality scoring, disengaged contact detection, and relationship mapping.
+
+### New Hire Monitoring
+
+Track when people recently join target accounts — strong intent signal for outbound.
+
+**Pattern:** Build a Sales Navigator URL with `CURRENT_COMPANY` + `RECENTLY_CHANGED_JOBS` filters (see URL Construction section). Pass to `salesnavigator-search-people`. For recurring monitoring, use schedule mode with `sync_mode: "incremental"` to only receive new hires since last check.
+
+**Batch monitoring:** Monitor multiple companies simultaneously by injecting multiple company URNs into the same URL (up to ~100 companies per URL).
+
+**Key actions:** `salesnavigator-search-people` (schedule + incremental), `linkedin-extract-company` (to get `company_id` for URL construction).
+
+### Monitoring & Scheduling
+
+Use schedule mode with CRON + `sync_mode: "incremental"` for recurring checks. Examples: new connections (`linkedin-extract-connections`), new messages (`linkedin-extract-messages`), competitor hiring (`linkedin-search-jobs` weekly), content monitoring (`linkedin-search-content`), profile changes (`linkedin-extract-people`).
+
+### SaaS Integration
+
+Create engagement identities (one per end-user, `type: "engagement"`, $7.99/mo). Must be set at creation — cannot change later. Generate login links for password-free account connection. All outreach actions run credit-free. Use webhooks (`AUTH_SUCCESS`, `AUTH_EXPIRED`) for session lifecycle. This is the correct architecture for outreach products — not managed mode, not per-credit billing.
+
+---
+
+## Best Practices
+
+### Always Store Immutable Identifiers
+
+LinkedIn profile handles (URL slugs) are mutable — users can change them at any time. Always store:
+- `linkedin_profile_id` — immutable, unique across all of LinkedIn
+- `sales_navigator_profile_id` — useful for URL reconstruction if handle changes
+- `linkedin_company_id` — never changes for companies
+
+If a stored profile URL returns "Profile Not Accessible," reconstruct the URL using the Sales Navigator Profile ID, or search by name + company to find the updated handle.
+
+### Use Managed Mode for Extraction, Direct for Outreach
+
+Default to `identity_mode: "managed"` for any data extraction or search — it's cookieless and requires zero account setup. Switch to direct mode only when the action requires a specific identity (outreach, messaging, monitoring your own connections/messages/followers).
+
+### Deduplicate by Profile ID
+
+LinkedIn and Sales Navigator search results can contain duplicates across pages. Always deduplicate results by `sales_navigator_profile_id` or `linkedin_profile_id` after collecting all pages.
+
+### Consistent Terminology
+
+- **Identity** = a user license in your workspace (not a LinkedIn account)
+- **Integration** = a connected LinkedIn account attached to an identity
+- **Action** = a specific API operation (extract, search, message, etc.)
+- **Run** = a single execution of an action
+- **Smart Limits** = Edges' daily action caps per identity (not LinkedIn rate limits)
+
+---
+
+## SDK Reference
+
+```typescript
+import { Edges } from '@edgesrun/sdk';
+const ed = new Edges({ apiKey: process.env.EDGES_API_KEY! });
+
+// Scoped clients: ed.linkedin.*, ed.salesnavigator.*, ed.core.*
+// Live mode — returns data immediately
+const { data } = await ed.linkedin.extractPeople({
+  input: { linkedin_profile_url: "https://www.linkedin.com/in/satya-nadella" },
+  parameters: { experiences: true, skills: true }
+});
+
+// Async mode — batch, append "Async" to method name
+const result = await ed.linkedin.extractPeopleAsync({
+  inputs: [{ linkedin_profile_url: "..." }, { linkedin_profile_url: "..." }],
+  callback: { url: "https://your-app.com/webhook", on: "final" }
+});
+
+// Response: response.data, response.status, response.ok, response.nextPage (pagination cursor)
+```
+
+---
+
+## Error Handling
+
+Errors return structured JSON with:
+- `error_label` — machine-readable type (use for retry logic)
+- `error_scope` — which part of the request failed
+- `error_ref` — unique ID for support
+- `message` — human-readable description
+- `status_code` — HTTP status
+
+Common patterns:
+- **400** — Invalid input (wrong field name, malformed URL)
+- **401** — Invalid API key
+- **424** — LinkedIn-level failure (profile not accessible, account restricted)
+- **429** — API rate limit exceeded (exponential backoff)
+- `LIMIT_REACHED` — Smart Limit hit, wait for 24h rolling reset (never retry immediately)
+
+Full error reference: https://docs.edges.run/v1/error-reference
+
+---
+
+## Links
+
+- **Documentation:** https://docs.edges.run
+- **Quickstart:** https://docs.edges.run/v1/quickstart
+- **SDK (npm):** https://www.npmjs.com/package/@edgesrun/sdk
+- **API Reference:** https://docs.edges.run/v1/api/introduction
+- **OpenAPI Specs:**
+  - Core: https://api.edges.run/core/openapi.json
+  - Actions: https://api.edges.run/actions/openapi.json
+  - Flows: https://api.edges.run/automation/openapi/openapi_flows.json
+- **Smart Limits:** https://docs.edges.run/v1/linkedin/limits
+- **Rate Limits:** https://docs.edges.run/v1/runs/rate-limits
+- **Error Reference:** https://docs.edges.run/v1/error-reference
+- **Best Practices:** https://docs.edges.run/v1/linkedin/best-practices
+- **Outreach Guide:** https://docs.edges.run/v1/guides/linkedin-outreach-sequence

@@ -1,0 +1,49 @@
+name: Report a mis-trigger
+description: A skill ran that was not the one you expected
+title: "[mis-trigger] "
+labels:
+  - mis-trigger
+  - skills
+body:
+  - type: textarea
+    id: prompt
+    attributes:
+      label: What you asked the agent
+      description: Exact prompt or request you used
+      placeholder: e.g. Get the email for this LinkedIn profile...
+    validations:
+      required: true
+  - type: input
+    id: skill_ran
+    attributes:
+      label: Skill that ran
+      description: The skill name that actually triggered
+      placeholder: e.g. edges-linkedin-extract-people
+    validations:
+      required: true
+  - type: input
+    id: skill_expected
+    attributes:
+      label: Skill you expected
+      description: The skill name you expected to run
+      placeholder: e.g. edges-linkedin-extract-contact
+    validations:
+      required: true
+  - type: dropdown
+    id: tool
+    attributes:
+      label: Tool
+      options:
+        - Claude Code
+        - Cursor
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Plugin version / commit
+      description: Optional — tag, commit SHA, or plugin version
+      placeholder: e.g. v1.0.0 or abc1234
+    validations:
+      required: false

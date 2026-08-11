@@ -1,0 +1,30 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "edges-linkedin-skills",
+  "description": "Edges LinkedIn & Sales Navigator API skills for Claude Code — 76 curated skills covering profile extraction, search, Sales Navigator, and outreach. Cookieless by default.",
+  "owner": {
+    "name": "Edges",
+    "url": "https://github.com/edgesrun"
+  },
+  "plugins": [
+    {
+      "name": "linkedin-skills",
+      "description": "76 curated skills for the Edges LinkedIn & Sales Navigator API. Extract profiles, search people and companies, automate outreach. Cookieless — no LinkedIn account needed. Prompts for your API key on install and stores it securely.",
+      "author": {
+        "name": "Edges",
+        "url": "https://github.com/edgesrun"
+      },
+      "category": "productivity",
+      "source": "./plugins/linkedin-skills",
+      "homepage": "https://docs.edges.run",
+      "keywords": [
+        "linkedin",
+        "sales-navigator",
+        "edges",
+        "api",
+        "outreach",
+        "lead-generation"
+      ]
+    }
+  ]
+}
