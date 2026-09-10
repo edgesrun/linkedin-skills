@@ -73,6 +73,7 @@ Default: `"identity_mode": "managed"` (cookieless). For outreach/messaging: `"id
 - **URL encoding.** SN URLs use double-URL-encoding: `%2522` = `"`, `%2520` = space. Edges normalizes returned URLs to `%20` — both work as input.
 - **Smart Limits:** this action consumes `Sales Navigator people search`, per identity, on a 24-hour rolling window. There is no single ceiling to assume: a new identity is still ramping up and a workspace can carry custom limits, so read the effective value from `GET /v1/identities/{identity_uid}/actions/{action_slug}/limits` before sizing a batch. Full capacity per account level is in the [limits reference](https://docs.edges.run/v1/linkedin/limits).
 - **Automated pagination script:** See `scripts/paginate.ts` for a ready-to-use TypeScript script that handles cursor-based pagination, deduplication, and result collection.
+- **Deduplicate the results.** Search results can repeat the same person across pages. After collecting every page, deduplicate on `linkedin_profile_id` or `sales_navigator_profile_id` — never on the profile handle, which the person can change.
 
 ## Example — Live
 
