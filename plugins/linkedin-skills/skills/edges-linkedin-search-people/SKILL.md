@@ -66,7 +66,7 @@ See the `edges-url-construction` skill for URL construction patterns.
 - **Keyword narrowing trick.** Searching "John Smith" returns 500+ results. Adding a context keyword like `"John Smith" AND "developer"` reduces to <5. Use role, industry, or company as the narrowing term.
 - **Multi-pass strategy.** Try company name first → intent keyword second → bare name last.
 - **Page size is 10** (fixed). Use cursor-based pagination via `X-Pagination-Next` header.
-- **Smart Limits:** 2,000 people searches per identity per 24 hours.
+- **Smart Limits:** this action consumes `People search` and `Unique people returned by search`, per identity, on a 24-hour rolling window. There is no single ceiling to assume: a new identity is still ramping up and a workspace can carry custom limits, so read the effective value from `GET /v1/identities/{identity_uid}/actions/{action_slug}/limits` before sizing a batch. Full capacity per account level is in the [limits reference](https://docs.edges.run/v1/linkedin/limits).
 
 ## Example — Live
 

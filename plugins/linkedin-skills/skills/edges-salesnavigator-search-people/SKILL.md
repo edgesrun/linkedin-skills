@@ -71,7 +71,7 @@ Default: `"identity_mode": "managed"` (cookieless). For outreach/messaging: `"id
 - **Empty result `[]` is valid** — it means the search matched no one. Check for `None` separately (indicates a parse error).
 - **Cursor expiry.** `X-Pagination-Next` cursors expire after 24 hours. For large result sets (1,000+), use async mode to avoid cursor expiry.
 - **URL encoding.** SN URLs use double-URL-encoding: `%2522` = `"`, `%2520` = space. Edges normalizes returned URLs to `%20` — both work as input.
-- **Smart Limits:** 2,000 people searches per identity per 24 hours.
+- **Smart Limits:** this action consumes `Sales Navigator people search`, per identity, on a 24-hour rolling window. There is no single ceiling to assume: a new identity is still ramping up and a workspace can carry custom limits, so read the effective value from `GET /v1/identities/{identity_uid}/actions/{action_slug}/limits` before sizing a batch. Full capacity per account level is in the [limits reference](https://docs.edges.run/v1/linkedin/limits).
 - **Automated pagination script:** See `scripts/paginate.ts` for a ready-to-use TypeScript script that handles cursor-based pagination, deduplication, and result collection.
 
 ## Example — Live

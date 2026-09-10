@@ -58,7 +58,7 @@ No additional parameters. Company data is always fully extracted.
 
 - **Always store `linkedin_company_id`.** This numeric ID is immutable and needed for constructing Sales Navigator URLs: CURRENT_COMPANY filter, PAST_COMPANY filter, new hires monitoring, content feeds, and job searches. Company URL slugs can change.
 - **Funding data included.** Returns Crunchbase URL, last funding round details (date, type, amount, investors) when available.
-- **Smart Limits:** 10,000 company enrichments per identity per 24 hours.
+- **Smart Limits:** this action consumes `Company enrichments`, per identity, on a 24-hour rolling window. There is no single ceiling to assume: a new identity is still ramping up and a workspace can carry custom limits, so read the effective value from `GET /v1/identities/{identity_uid}/actions/{action_slug}/limits` before sizing a batch. Full capacity per account level is in the [limits reference](https://docs.edges.run/v1/linkedin/limits).
 - **Cookieless.** Works with managed mode — no LinkedIn account needed.
 
 ## Example — Live

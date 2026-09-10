@@ -21,17 +21,31 @@ Nested comment replies (replies to comments) are not accessible — LinkedIn doe
 
 Edges enforces daily action caps per identity per action on a 24-hour rolling window. These are Edges business logic limits, not LinkedIn rate limits.
 
+These are **full-capacity planning figures**. They are not runtime values: a newly connected identity
+is still ramping up, and a workspace can carry custom limits, so the effective ceiling differs per
+identity. Read it before sizing a batch:
+
+`GET /v1/identities/{identity_uid}/actions/{action_slug}/limits`
+
 | Action | Standard | With Sales Navigator |
 |---|---|---|
 | Profile visits | 80/day | 500/day |
 | Connection requests | 25/day | 30/day |
-| Messages | 50/day | 250/day |
-| Profile enrichments | 10,000/day | 10,000/day |
-| Search people | 2,000/day | 2,000/day |
+| Messages | 250/day | 250/day |
+| Profile enrichments | 1,400/day \* | 2,100/day \* |
+| Search people | 450/day, plus 900 unique profiles returned | 950/day |
 | Company enrichments | 10,000/day | 10,000/day |
 | Contact info extractions | 250/day | 250/day |
+| InMail | 5 per ~31 days (15 Premium) | 50 per ~31 days |
 
-Query current limits: `GET /v1/identities/{identity_uid}/actions/{action_slug}/limits`
+\* Tuned per platform configuration — the endpoint above is authoritative.
+
+Search people consumes **two** limits at once: the search call itself and the number of unique
+profiles the results contain. Either can stop the action.
+
+InMail is the one quota that is **not** daily — it runs on a roughly 31-day window.
+
+The full table, by account level, is in the [limits reference](https://docs.edges.run/v1/linkedin/limits).
 
 ## Live Mode Outreach Delays
 

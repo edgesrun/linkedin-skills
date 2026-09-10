@@ -38,18 +38,18 @@ For production outreach at scale, engagement identities ($7.99/mo per identity) 
 
 ## Daily Limits Per Identity
 
-These are Smart Limits — Edges business logic caps on a 24-hour rolling window.
+These are Smart Limits — Edges business logic caps, not LinkedIn rate limits. Most run on a 24-hour rolling window; InMail does not.
 
 | Action | Standard | With Sales Navigator |
 |---|---|---|
 | Profile visits | 80/day | 500/day |
 | Connection requests | 25/day | 30/day |
-| Messages | 50/day | 250/day |
-| InMail | varies | varies |
+| Messages | 250/day | 250/day |
+| InMail | 5 / ~31 days (15 Premium) | 50 / ~31 days |
+
+These are full-capacity planning figures. A ramping identity is lower, and a workspace can carry custom limits — read the effective value from `GET /v1/identities/{identity_uid}/actions/{action_slug}/limits` before sending.
 
 **Classic accounts** (non-Premium) are limited to **5 personalized connection notes per month**. Either send connection requests without notes, or upgrade the identity to Premium.
-
-Query current usage: `GET /v1/identities/{identity_uid}/actions/{action_slug}/limits`
 
 ## Minimum Delays Between Actions
 

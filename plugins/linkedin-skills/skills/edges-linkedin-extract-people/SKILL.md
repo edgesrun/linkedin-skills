@@ -65,7 +65,7 @@ All default to `false`. **Set all 4 to `true` for full enrichment.**
 - **Only returns last 5 experiences.** This is a LinkedIn platform constraint, not an Edges limitation. Use `edges-linkedin-extract-people-experiences` for the complete job history (all positions, paginated in chunks of 20).
 - **Skills are partial.** Only 1-2 main skills are returned. Use `edges-linkedin-extract-people-skills` for the full list with endorsement counts.
 - **Always store immutable IDs.** `linkedin_profile_id` and `sales_navigator_profile_id` are immutable. Profile handles (`/in/slug`) can change at any time. If a stored URL stops working, reconstruct it from the SN profile ID or re-search by name.
-- **Smart Limits:** 10,000 profile enrichments per identity per 24 hours.
+- **Smart Limits:** this action consumes `Profile enrichments`, per identity, on a 24-hour rolling window. There is no single ceiling to assume: a new identity is still ramping up and a workspace can carry custom limits, so read the effective value from `GET /v1/identities/{identity_uid}/actions/{action_slug}/limits` before sizing a batch. Full capacity per account level is in the [limits reference](https://docs.edges.run/v1/linkedin/limits).
 - **Latency:** Live mode returns in 2-6 seconds.
 
 ## Example — Live

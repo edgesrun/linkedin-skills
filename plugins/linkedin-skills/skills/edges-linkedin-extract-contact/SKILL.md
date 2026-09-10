@@ -52,7 +52,7 @@ No additional parameters. Contact data is always fully extracted.
 
 - **Coverage depends on the person.** Not everyone makes their email or phone visible on LinkedIn. Expect partial results — some profiles return only email, some only phone, some nothing.
 - **Visible contact only.** This extracts what's publicly listed on the profile (email/phone/address when present).
-- **Smart Limits:** 250 contact extractions per identity per 24 hours.
+- **Smart Limits:** this action consumes `Contact info lookups`, per identity, on a 24-hour rolling window. There is no single ceiling to assume: a new identity is still ramping up and a workspace can carry custom limits, so read the effective value from `GET /v1/identities/{identity_uid}/actions/{action_slug}/limits` before sizing a batch. Full capacity per account level is in the [limits reference](https://docs.edges.run/v1/linkedin/limits).
 - **Requires a connected identity.** Managed mode is not available for this action.
 
 ## Example — Live

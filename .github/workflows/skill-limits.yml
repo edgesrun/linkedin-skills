@@ -1,0 +1,47 @@
+# Fail when a SKILL.md states a per-action ceiling an agent could size a batch from.
+# Effective quotas are per identity (ramp-up + workspace overrides), so the live
+# endpoint is the only runtime figure. Planning numbers belong in the docs table
+# and in edges-outreach-sequence — not inline next to an action.
+name: Skill limits
+
+on:
+  pull_request:
+  push:
+    paths:
+      - "plugins/**/SKILL.md"
+      - "plugins/**/references/**"
+      - ".github/workflows/skill-limits.yml"
+
+jobs:
+  no-hardcoded-ceilings:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail if a skill states a per-24h ceiling
+        run: |
+          set -euo pipefail
+          failed=0
+
+          echo "::group::Smart Limits:** followed by a digit"
+          if matches="$(grep -rnE 'Smart Limits:\*\* *[0-9]' plugins/ || true)" && [ -n "$matches" ]; then
+            echo "$matches"
+            echo "::error::SKILL.md must not state a numeric Smart Limits ceiling. Point at GET /v1/identities/{identity_uid}/actions/{action_slug}/limits instead."
+            failed=1
+          else
+            echo "clean"
+          fi
+          echo "::endgroup::"
+
+          echo "::group::Numeric per-identity / per-day / per-24h ceiling in SKILL.md"
+          # Outreach planning table is the documented exception (full-capacity figures).
+          if matches="$(grep -rnE --include='SKILL.md' '[0-9][0-9,]{2,}[[:space:]]*(per|/)[[:space:]]*(identity|day|24)' plugins/ \
+            | grep -v 'skills/edges-outreach-sequence/SKILL.md' || true)" && [ -n "$matches" ]; then
+            echo "$matches"
+            echo "::error::SKILL.md must not state a per-identity / per-day / per-24h ceiling. Planning figures belong in the limits reference; runtime figures come from the identity limits endpoint."
+            failed=1
+          else
+            echo "clean"
+          fi
+          echo "::endgroup::"
+
+          exit "$failed"
